@@ -36,14 +36,14 @@ export default {
   setup() {
     const active = ref(0)
     const icon = {
-      homeactive: 'https://krseoul.imgtbl.com/i/2024/07/26/66a3a4db03689.png',
-      homeinactive: 'https://krseoul.imgtbl.com/i/2024/07/26/66a3a4ce49e0a.png',
-      categoryactive: 'https://krseoul.imgtbl.com/i/2024/07/26/66a3a4ce02516.png',
-      categoryinactive: 'https://krseoul.imgtbl.com/i/2024/07/26/66a3ac700e3b8.png',
-      chatactive: 'https://krseoul.imgtbl.com/i/2024/07/26/66a3a4e39de46.png',
-      chatinactive: 'https://krseoul.imgtbl.com/i/2024/07/26/66a3a4ce2c368.png',
-      myactive: 'https://krseoul.imgtbl.com/i/2024/07/26/66a3ad4a7525b.png',
-      myinactive: 'https://krseoul.imgtbl.com/i/2024/07/26/66a3a4ce0c8ec.png',
+      homeactive: '',
+      homeinactive: '',
+      categoryactive: '',
+      categoryinactive: '',
+      chatactive: '',
+      chatinactive: '',
+      myactive: '',
+      myinactive: '',
     }
     return {
       icon,

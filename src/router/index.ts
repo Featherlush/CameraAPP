@@ -26,7 +26,7 @@ const router = createRouter({
       name: 'Album',
       component: Album,
       meta: {
-        showTabbar: true,
+        showTabbar: false,
         title: '相册',
       },
     },
@@ -35,7 +35,7 @@ const router = createRouter({
       name: 'Template',
       component: Template,
       meta: {
-        showTabbar: true,
+        showTabbar: false,
         title: '模板选择',
       },
     },

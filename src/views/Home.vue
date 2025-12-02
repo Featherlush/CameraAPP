@@ -3,8 +3,17 @@
     <!-- 相机预览区域 -->
     <div class="camera-preview">
       <video ref="videoRef" class="camera-video" autoplay playsinline></video>
+      <img
+        ref="templateRef"
+        class="camera-template"
+        v-if="selectedTemplate"
+        :src="selectedTemplate.src"
+      />
       <!-- 网格辅助线（示例中的九宫格） -->
       <div class="camera-grid" v-show="gridEnabled"></div>
+
+      <!-- 拍照成功闪烁边框（核心新增） -->
+      <div class="capture-flash" v-if="isCapturing"></div>
 
       <!-- 顶部功能按钮栏（参考示例：返回、闪光灯、模板、设置） -->
       <div class="top-controls">
@@ -21,9 +30,9 @@
       </div>
 
       <!-- 底部曝光条（示例中的进度条） -->
-      <div class="exposure-bar">
+      <!-- <div class="exposure-bar">
         <span class="exposure-dot"></span>
-      </div>
+      </div> -->
     </div>
 
     <!-- 底部操作栏（参考示例：切换摄像头、滤镜、拍摄、AR、相册） -->
@@ -33,7 +42,7 @@
       <!-- 左中：滤镜按钮 -->
       <van-icon name="smile-o" class="bottom-btn filter-btn" @click="handleFilter" />
       <!-- 中间：拍摄按钮 -->
-      <button class="capture-btn" @click="handleCapture">
+      <button class="capture-btn" @click="handleCapture" :disabled="isCapturing">
         <span class="capture-inner"></span>
       </button>
       <!-- 右中：AR按钮 -->
@@ -45,7 +54,7 @@
     </div>
 
     <!-- 设置弹窗 -->
-    <van-popup v-model:show="settingPopupShow" position="bottom" :style="{ height: '70%' }">
+    <van-popup v-model:show="settingPopupShow" position="bottom" >
       <div class="setting-popup">
         <div class="popup-header">
           <h3>相机设置</h3>
@@ -63,6 +72,14 @@
         </div>
       </div>
     </van-popup>
+
+    <!-- 保存成功弹窗 -->
+    <!-- <van-popup v-model:show="saveSuccessShow" position="center" duration="200">
+      <div class="save-success">
+        <van-icon name="success" color="#4CAF50" size="48" />
+        <p>保存成功！</p>
+      </div>
+    </van-popup> -->
   </div>
 </template>
 
@@ -70,6 +87,22 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Icon, Popup, Cell } from 'vant'
+import { photoDB } from '@/utils/db';
+
+// 新增：声明模板的类型接口
+interface Template {
+  name: string;
+  cover: string;
+  src: string;
+}
+
+// 新增状态：保存成功弹窗、拍照中状态（控制闪烁动画）
+const saveSuccessShow = ref(false);
+const isCapturing = ref(false); // 拍照中标记（控制闪烁动画）
+
+// 显式声明类型（修复 never 类型问题）
+const selectedTemplate = ref<Template | null>(null);
+const templateRef = ref<HTMLImageElement | null>(null);
 
 // 视频流相关
 const videoRef = ref<HTMLVideoElement | null>(null)
@@ -119,15 +152,26 @@ const handleFilter = () => {
   router.push('/filters')
 }
 
-/** 拍照功能 */
+/** 拍照功能（核心修改：添加闪烁动画控制） */
 const handleCapture = () => {
+  if (isCapturing.value) return; // 防止重复点击
   console.log('执行拍照操作')
-  takePhoto()
+
+  // 1. 开始闪烁动画
+  isCapturing.value = true;
+
+  // 2. 执行拍照合成
+  takePhoto();
+
+  // 3. 动画结束后关闭标记（与CSS动画时长一致）
+  setTimeout(() => {
+    isCapturing.value = false;
+  }, 800); // 与动画时长 .8s 保持一致
 }
 
 /** AR按钮 - 跳转路由 */
 const handleAR = () => {
-  router.push('/ar-feature')
+  router.push('/template')
 }
 
 /** 相册按钮 - 跳转路由 */
@@ -176,32 +220,76 @@ const initCamera = async () => {
 }
 
 const takePhoto = () => {
-  if (!videoRef.value) return
-  const canvas = document.createElement('canvas')
-  const { videoWidth, videoHeight } = videoRef.value
-  canvas.width = videoWidth
-  canvas.height = videoHeight
-  const ctx = canvas.getContext('2d')
+  if (!videoRef.value || !selectedTemplate) return; // 无模板时不处理
+  const canvas = document.createElement('canvas');
+  const { videoWidth, videoHeight } = videoRef.value;
+  canvas.width = videoWidth;
+  canvas.height = videoHeight;
+  const ctx = canvas.getContext('2d');
+
   if (ctx) {
-    ctx.drawImage(videoRef.value, 0, 0, videoWidth, videoHeight)
-    const photoData = canvas.toDataURL('image/jpeg', 0.9)
-    console.log('拍摄完成:', photoData)
-    handlePhotoTaken(photoData)
-  }
-}
+    // 1. 绘制摄像头画面（底层）
+    ctx.drawImage(videoRef.value, 0, 0, videoWidth, videoHeight);
 
-const handlePhotoTaken = (photoData: string) => {
-  // 预留：预览/保存逻辑
-}
+    // 2. 绘制模板（完全覆盖上层，关键修改）
+    if (templateRef.value) {
+      // 模板尺寸和Canvas完全一致，实现全屏覆盖
+      ctx.drawImage(
+        templateRef.value,
+        0, // 左上角x坐标
+        0, // 左上角y坐标
+        videoWidth, // 模板宽度=画布宽度
+        videoHeight // 模板高度=画布高度
+      );
+    }
 
-// ========== 生命周期 ==========
-onMounted(() => {
-  if (navigator.mediaDevices && 'getUserMedia' in navigator.mediaDevices) {
-    initCamera()
-  } else {
-    alert('浏览器不支持摄像头')
+    // 3. 生成最终照片
+    const photoData = canvas.toDataURL('image/jpeg', 0.9);
+    handlePhotoTaken(photoData);
+    localStorage.removeItem('selectedTemplate');
+    selectedTemplate.value = null; // 拍照后清空模板，方便下次拍摄
   }
-})
+};
+
+const handlePhotoTaken = async (photoData: string) => {
+  try {
+    await photoDB.savePhoto(photoData);
+    // 闪烁动画结束后显示保存成功弹窗（延迟400ms，体验更流畅）
+    setTimeout(() => {
+      saveSuccessShow.value = true;
+      // 2 秒后关闭弹窗
+      setTimeout(() => {
+        saveSuccessShow.value = false;
+        // 如需自动跳转：router.push('/album');
+      }, 1500);
+    }, 400);
+  } catch (err) {
+    console.error('保存照片失败:', err);
+    alert('保存失败，请重试');
+    isCapturing.value = false; // 保存失败也关闭闪烁状态
+  }
+};
+
+// ========== 初始化数据库（页面挂载时） ==========
+onMounted(async () => {
+  try {
+    // 新增：读取本地存储的模板（关键！之前没加）
+    const templateStr = localStorage.getItem('selectedTemplate');
+    if (templateStr) {
+      selectedTemplate.value = JSON.parse(templateStr);
+    }
+
+    await photoDB.init(); // 初始化 IndexedDB
+    if (navigator.mediaDevices && 'getUserMedia' in navigator.mediaDevices) {
+      initCamera();
+    } else {
+      alert('浏览器不支持摄像头');
+    }
+  } catch (err) {
+    console.error('数据库初始化失败:', err);
+    alert('存储功能异常，无法保存照片');
+  }
+});
 
 onUnmounted(() => {
   if (mediaStream.value) mediaStream.value.getTracks().forEach((track) => track.stop())
@@ -241,16 +329,47 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+/* 核心新增：拍照闪烁边框动画 */
+.capture-flash {
+  position: absolute;
+  inset: 0;
+  border: 8px solid #fff; /* 边框宽度和颜色 */
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 100; /* 确保在最上层显示 */
+  animation: flash 0.8s ease-out forwards; /* 动画名称、时长、缓动效果 */
+}
+
+/* 闪烁动画关键帧 */
+@keyframes flash {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    border-color: #fff; /* 初始白色边框 */
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02); /* 轻微放大，增强视觉冲击 */
+    border-color: #f8f8f8; /* 稍浅的白色 */
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+    border-color: transparent; /* 最终透明消失 */
+  }
+}
+
 /* 顶部按钮栏（参考示例布局：左、中、右左、右右） */
 .top-controls {
   position: absolute;
-  top: 15px;
+  background-color: rgba(0, 0, 0, 0.5);
+  top: 0px;
   left: 0;
   right: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
+  padding: 15px 20px;
   z-index: 10;
 }
 
@@ -363,6 +482,12 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+/* 拍照中禁用按钮样式（防止重复点击） */
+.capture-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .capture-inner {
   display: block;
   width: 60px;
@@ -387,5 +512,38 @@ onUnmounted(() => {
   background-color: #1a1a1a;
   color: #fff;
   border-bottom: 1px solid #222;
+}
+
+.camera-preview {
+  width: 100%;
+  height: calc(100% - 100px);
+  position: relative; /* 关键：作为模板绝对定位的父容器 */
+  overflow: hidden; /* 裁剪超出预览区的模板部分 */
+}
+
+/* 核心：模板完全覆盖样式 */
+.camera-template {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%; /* 宽度铺满预览区 */
+  height: 100%; /* 高度铺满预览区 */
+  object-fit: cover; /* 保持比例，裁剪超出部分（避免变形） */
+  pointer-events: none; /* 不遮挡摄像头操作（如点击、切换） */
+  z-index: 5; /* 确保在摄像头画面之上，按钮之下 */
+}
+
+/* 保存成功弹窗样式 */
+.save-success {
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  padding: 30px 40px;
+  border-radius: 12px;
+  text-align: center;
+  color: #fff;
+}
+.save-success p {
+  margin-top: 15px;
+  font-size: 16px;
 }
 </style>
