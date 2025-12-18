@@ -133,7 +133,7 @@ const handleFlashToggle = () => {
 
 /** 模板按钮 - 跳转路由 */
 const handleTemplate = () => {
-  router.push('/templates')
+  router.push('/template')
 }
 
 /** 设置按钮 - 打开弹窗 */
@@ -149,7 +149,7 @@ const handleFlipCamera = () => {
 
 /** 滤镜按钮 - 跳转路由 */
 const handleFilter = () => {
-  router.push('/filters')
+  router.push('/filter')
 }
 
 /** 拍照功能（核心修改：添加闪烁动画控制） */
@@ -171,7 +171,7 @@ const handleCapture = () => {
 
 /** AR按钮 - 跳转路由 */
 const handleAR = () => {
-  router.push('/template')
+  router.push('/AR')
 }
 
 /** 相册按钮 - 跳转路由 */

@@ -5,7 +5,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 const Home = () => import('@/views/Home.vue')
 const Album = () => import('@/views/Album.vue')
 const Template = () => import('@/views/Template.vue')
+
+const Filter = () =>import('@/views/Filters.vue')
 const My = () => import('@/views/My.vue')
+
+const AR = () => import('@/views/AR.vue')
 // 可选：添加404页面
 const NotFound = () => import('@/views/NotFound.vue')
 
@@ -47,6 +51,16 @@ const router = createRouter({
         showTabbar: true,
         title: '我的',
       },
+    },
+    {
+      path:'/filter',
+      name:'Filter',
+      component:Filter
+    },
+    {
+      path:'/AR',
+      name:'AR',
+      component:AR
     },
     // 404页面
     {
