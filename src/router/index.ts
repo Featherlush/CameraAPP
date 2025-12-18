@@ -1,28 +1,29 @@
-// src/router/index.ts (或 .js)
-import { createRouter, createWebHistory } from 'vue-router'
+// src/router/index.ts
+import { createRouter, createWebHistory, createWebHashHistory } from 'vue-router'
 
-// 导入页面组件（推荐使用懒加载）
+// 导入页面组件（懒加载，保持原有优势）
 const Home = () => import('@/views/Home.vue')
 const Album = () => import('@/views/Album.vue')
 const Template = () => import('@/views/Template.vue')
-
-const Filter = () =>import('@/views/Filters.vue')
+const Filters = () => import('@/views/Filters.vue') // 命名与组件文件一致
 const My = () => import('@/views/My.vue')
-
 const AR = () => import('@/views/AR.vue')
-// 可选：添加404页面
+// 404页面（保留并使用）
 const NotFound = () => import('@/views/NotFound.vue')
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  // 优化：开发环境用 history 模式，生产环境用 hash 模式（解决打包后本地预览空白）
+  history: import.meta.env.DEV
+    ? createWebHistory(import.meta.env.BASE_URL)
+    : createWebHashHistory(import.meta.env.BASE_URL),
   routes: [
     {
       path: '/',
       name: 'Home',
       component: Home,
       meta: {
-        showTabbar: false, // 显示Tabbar
-        title: '主页', // 页面标题
+        showTabbar: false, // 修正注释与值的矛盾，根据实际需求调整为 true/false
+        title: '主页',
       },
     },
     {
@@ -53,33 +54,34 @@ const router = createRouter({
       },
     },
     {
-      path:'/filter',
-      name:'Filter',
-      component:Filter
+      path: '/filter', // URL 路径保持小写
+      name: 'Filters', // 路由名称与组件文件名一致（Filters.vue）
+      component: Filters,
+      meta: { // 补充 meta 字段，保持逻辑统一
+        showTabbar: false, // 根据实际需求调整
+        title: '滤镜',
+      },
     },
     {
-      path:'/AR',
-      name:'AR',
-      component:AR
+      path: '/ar', // URL 路径改为小写（符合 URL 规范）
+      name: 'AR', // 组件名是 AR.vue，名称保持大写没问题
+      component: AR,
+      meta: { // 补充 meta 字段
+        showTabbar: false,
+        title: 'AR效果',
+      },
     },
-    // 404页面
+    // 新增：404 路由（必须放在最后，匹配所有未定义的路径）
     {
-      path: '/:pathMatch(.*)*',
+      path: '/:pathMatch(.*)*', // 匹配所有路径（Vue Router 4 写法）
       name: 'NotFound',
       component: NotFound,
       meta: {
         showTabbar: false,
+        title: '页面不存在',
       },
     },
   ],
-})
-
-// 可选：全局前置守卫 - 设置页面标题
-router.beforeEach((to, from, next) => {
-  if (to.meta.title) {
-    document.title = to.meta.title + ' - CameraAPP'
-  }
-  next()
 })
 
 export default router
