@@ -10,12 +10,38 @@
         :style="{ filter: selectedFilter?.type === 'css' ? (selectedFilter?.cssFilter || 'none') : 'none' }"
       ></video>
       <canvas ref="canvasRef" class="camera-canvas"></canvas>
-      <img
-        ref="templateRef"
-        class="camera-template"
-        v-if="selectedTemplate"
-        :src="selectedTemplate.src"
-      />
+      <!-- 模板容器：用于截图的容器 -->
+      <div ref="templateContainerRef" class="template-container">
+        <img
+          ref="templateRef"
+          class="camera-template"
+          v-if="selectedTemplate"
+          :src="selectedTemplate.src"
+          @load="templateLoaded = true"
+        />
+        <!-- 动态模板渲染DOM -->
+        <!-- 1. 拍立得边框模板 -->
+        <div v-if="renderConfig && renderConfig.type === 'frame'" :style="renderConfig.style"></div>
+        <!-- 2. 胶片模板 -->
+        <div v-if="renderConfig && renderConfig.type === 'filmFrame'" :style="renderConfig.mainStyle">
+          <div :style="renderConfig.topBarStyle"></div>
+          <div :style="renderConfig.bottomBarStyle"></div>
+        </div>
+        <!-- 3. 复古相框模板 -->
+        <div v-if="renderConfig && renderConfig.type === 'retroFrame'" :style="renderConfig.innerStyle">
+          <div :style="renderConfig.outerStyle"></div>
+        </div>
+        <!-- 4. 日系贴纸模板 -->
+        <div v-if="renderConfig && renderConfig.type === 'sticker'" :style="renderConfig.wrapStyle">
+          <div
+            v-for="(sticker, index) in renderConfig.stickers"
+            :key="index"
+            :style="sticker.style"
+          >
+            {{ sticker.content }}
+          </div>
+        </div>
+      </div>
       <!-- 网格辅助线（示例中的九宫格） -->
       <div class="camera-grid" v-show="gridEnabled"></div>
 
@@ -47,30 +73,43 @@
         </div>
       </div>
 
+      <!-- 新增：动态模板状态指示器 -->
+      <div class="filter-indicator" v-if="renderConfig || (selectedTemplate && selectedTemplate.name)" style="top: 170px;">
+        <div class="filter-tag">
+          <van-icon name="photo" class="filter-template-icon" />
+          <span class="filter-name">{{ getTemplateName() }}</span>
+          <van-icon
+            name="cross"
+            class="filter-close"
+            @click="removeTemplate"
+          />
+        </div>
+      </div>
+
       <!-- 顶部功能按钮栏 -->
       <div class="top-controls">
         <!-- 左上：返回按钮 -->
         <van-icon name="arrow-left" class="top-btn back-btn" @click="handleBack" />
-        <!-- 中上：AR特效按钮（核心修改：确保容器和按钮样式正确） -->
+        <!-- 中上：AR特效按钮 -->
         <div class="flash-ar-container top-btn">
           <div class="ar-menu-btn" @click.stop="toggleARMenu">
             <span class="ar-menu-text">特效</span>
           </div>
           <!-- AR特效下拉菜单 -->
           <div class="ar-dropdown-menu" v-show="showARMenu" ref="arMenuRef">
-            <div class="ar-menu-item" @click.stop="selectAR('cat')">  <!-- 修复：添加.stop阻止冒泡 -->
+            <div class="ar-menu-item" @click.stop="selectAR('cat')">
               <div class="ar-icon cat-icon"></div>
               <span>猫脸特效</span>
             </div>
-            <div class="ar-menu-item" @click.stop="selectAR('dog')">  <!-- 修复：添加.stop阻止冒泡 -->
+            <div class="ar-menu-item" @click.stop="selectAR('dog')">
               <div class="ar-icon dog-icon"></div>
               <span>狗脸特效</span>
             </div>
-            <div class="ar-menu-item" @click.stop="selectAR('sunglasses')">  <!-- 修复：添加.stop阻止冒泡 -->
+            <div class="ar-menu-item" @click.stop="selectAR('sunglasses')">
               <div class="ar-icon sunglasses-icon"></div>
               <span>墨镜特效</span>
             </div>
-            <div class="ar-menu-item" @click.stop="selectAR('none')">  <!-- 修复：添加.stop阻止冒泡 -->
+            <div class="ar-menu-item" @click.stop="selectAR('none')">
               <div class="ar-icon none-icon"></div>
               <span>关闭特效</span>
             </div>
@@ -96,12 +135,12 @@
         <div class="filter-dot" v-if="selectedFilter && selectedFilter.name !== '原图'"></div>
       </div>
       <!-- 中间：拍摄按钮 -->
-      <button class="capture-btn" @click="handleCapture" :disabled="isCapturing">
+      <button class="capture-btn" @click="handleCapture" :disabled="isCapturing || !isTemplateReady">
         <span class="capture-inner"></span>
       </button>
       <!-- 右中：AR按钮 -->
       <div class="bottom-btn ar-btn" @click="handleAR">
-        <span class="ar-text">AR</span>
+        <span class="ar-text">素材</span>
       </div>
       <!-- 右下：相册按钮 -->
       <img src="@/assets/icon/album.png" class="bottom-btn album-btn" @click="handleAlbum" />
@@ -115,14 +154,12 @@
           <van-icon name="cross" @click="settingPopupShow = false" />
         </div>
         <div class="setting-list">
-          <van-cell title="分辨率" :value="resolutionOption" @click="handleResolutionSetting" />
           <van-cell
             title="网格线"
             :value="gridEnabled ? '开启' : '关闭'"
             @click="handleGridToggle"
           />
           <van-cell title="曝光度" :value="exposureOption" @click="handleExposureSetting" />
-          <van-cell title="存储位置" value="手机相册" />
           <van-cell
             title="当前滤镜"
             :value="selectedFilter ? selectedFilter.name : '无'"
@@ -133,6 +170,12 @@
             :value="getAREffectName(currentAREffect)"
             @click="toggleARMenu"
           />
+          <!-- 新增：设置中添加模板控制 -->
+          <van-cell
+            title="当前模板"
+            :value="getTemplateName()"
+            @click="removeTemplate"
+          />
         </div>
       </div>
     </van-popup>
@@ -140,8 +183,8 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, onMounted, onUnmounted, nextTick, onBeforeUnmount } from 'vue'
-  import { useRouter } from 'vue-router'
+  import { ref, onMounted, onUnmounted, nextTick, onBeforeUnmount, watch } from 'vue'
+  import { useRouter, useRoute } from 'vue-router'
   import { Icon, Popup, Cell } from 'vant'
   import { photoDB } from '@/utils/db';
 
@@ -161,11 +204,32 @@
 
   type AREffect = 'cat' | 'dog' | 'sunglasses' | 'none'
 
+  // ---------------- 模板配置类型 ----------------
+  interface RenderConfig {
+    type: 'frame' | 'filmFrame' | 'retroFrame' | 'sticker'
+    style?: Record<string, string>
+    mainStyle?: Record<string, string>
+    topBarStyle?: Record<string, string>
+    bottomBarStyle?: Record<string, string>
+    innerStyle?: Record<string, string>
+    outerStyle?: Record<string, string>
+    wrapStyle?: Record<string, string>
+    stickers?: Array<{
+      style: Record<string, string>
+      content: string
+    }>
+  }
+
   // ---------------- canvas / video ----------------
   const canvasRef = ref<HTMLCanvasElement | null>(null)
   const videoRef = ref<HTMLVideoElement | null>(null)
   const templateRef = ref<HTMLImageElement | null>(null)
+  const templateContainerRef = ref<HTMLDivElement | null>(null) // 模板容器Ref
   const arMenuRef = ref<HTMLElement | null>(null)
+
+  // ---------------- 新增：预览区域尺寸（核心修复） ----------------
+  const previewWidth = ref(0)
+  const previewHeight = ref(0)
 
   // ---------------- 状态 ----------------
   const isCapturing = ref(false)
@@ -173,13 +237,17 @@
   const selectedFilter = ref<Filter | null>(null)
   const mediaStream = ref<MediaStream | null>(null)
   const currentFacingMode = ref<'user' | 'environment'>('environment')
+  const saveSuccessShow = ref(false)
+  const renderConfig = ref<RenderConfig | null>(null)
+  const templateLoaded = ref(false) // 模板图片加载完成状态
+  const isTemplateReady = ref(true) // 模板是否准备就绪
 
   const flashEnabled = ref(false)
   const gridEnabled = ref(true)
   const settingPopupShow = ref(false)
   const resolutionOption = ref('1080P')
   const exposureOption = ref('自动')
-  const showARMenu = ref(false)  // 确保初始值为false
+  const showARMenu = ref(false)
   const currentAREffect = ref<AREffect>('none')
 
   // ---------------- AR 人脸追踪 ----------------
@@ -189,19 +257,33 @@
 
   // ---------------- 路由 ----------------
   const router = useRouter()
+  const route = useRoute()
+
+  // ---------------- 新增：窗口大小监听（核心修复） ----------------
+  const handleResize = () => {
+    if (templateContainerRef.value) {
+      previewWidth.value = templateContainerRef.value.clientWidth
+      previewHeight.value = templateContainerRef.value.clientHeight
+      // 同步更新AR Canvas尺寸
+      if (canvasRef.value) {
+        canvasRef.value.width = previewWidth.value
+        canvasRef.value.height = previewHeight.value
+      }
+    }
+  }
 
   // ---------------- 功能接口 ----------------
-  const handleBack = () => router.back()
+  const handleBack = () => router.push('/my')
 
-  // 闪光灯/AR菜单切换 - 修复：添加nextTick确保DOM更新
+  // 闪光灯/AR菜单切换
   const toggleARMenu = () => {
     nextTick(() => {
       showARMenu.value = !showARMenu.value
-      console.log('AR菜单状态:', showARMenu.value) // 调试日志
+      console.log('AR菜单状态:', showARMenu.value)
     })
   }
 
-  // 点击外部关闭菜单 - 修复：优化DOM判断逻辑
+  // 点击外部关闭菜单
   const handleClickOutside = (event: MouseEvent) => {
     if (arMenuRef.value && !arMenuRef.value.contains(event.target as Node)) {
       showARMenu.value = false
@@ -242,10 +324,39 @@
     return names[effect]
   }
 
-  // 原有的闪光灯功能（可以移除或保留）
-  const handleFlashToggle = () => {
-    // 这里可以保留闪光灯功能，或者改为直接打开AR菜单
-    toggleARMenu()
+  // 新增：获取当前模板名称
+  const getTemplateName = (): string => {
+    if (selectedTemplate?.value?.name) {
+      return selectedTemplate.value.name
+    } else if (renderConfig?.value?.type) {
+      const typeNames = {
+        'frame': '拍立得边框',
+        'filmFrame': '胶片边框',
+        'retroFrame': '复古相框',
+        'sticker': '日系贴纸'
+      }
+      return typeNames[renderConfig.value.type] || '自定义模板'
+    }
+    return '无'
+  }
+
+  // 新增：移除/取消动态模板（核心功能）
+  const removeTemplate = () => {
+    // 重置所有模板相关状态
+    selectedTemplate.value = null
+    renderConfig.value = null
+    templateLoaded.value = false
+
+    // 清除本地存储的模板数据
+    localStorage.removeItem('selectedTemplate')
+
+    // 清除路由中的模板参数（可选）
+    router.replace({
+      path: route.path,
+      query: { ...route.query, renderConfig: undefined }
+    })
+
+    console.log('✅ 动态模板已取消')
   }
 
   const handleTemplate = () => router.push('/template')
@@ -263,6 +374,7 @@
   // AR按钮点击事件
   const handleAR = () => {
     console.log('AR按钮点击')
+    router.push('/AR')
     toggleARMenu()
   }
 
@@ -273,55 +385,190 @@
     console.log('滤镜已移除')
   }
 
-  // ---------------- 拍照 ----------------
-  const handleCapture = () => {
+  // ---------------- 将DOM转为Canvas ----------------
+  const domToCanvas = async (element: HTMLElement, width: number, height: number): Promise<HTMLCanvasElement> => {
+    return new Promise((resolve) => {
+      // 创建临时canvas
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(canvas)
+        return
+      }
+
+      // 先清空画布
+      ctx.clearRect(0, 0, width, height)
+
+      // 检查是否支持html2canvas（需要提前引入）
+      if (window.html2canvas) {
+        window.html2canvas(element, {
+          width: width,
+          height: height,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: 'transparent'
+        }).then(canvas => {
+          resolve(canvas)
+        })
+      } else {
+        // 降级处理：如果没有html2canvas，尝试直接绘制图片
+        resolve(canvas)
+      }
+    })
+  }
+
+  // ---------------- 拍照（核心修复：尺寸匹配） ----------------
+  const handleCapture = async () => {
     if (isCapturing.value) return
     isCapturing.value = true
-    takePhoto()
-    setTimeout(() => { isCapturing.value = false }, 800)
+
+    try {
+      await takePhoto()
+    } catch (error) {
+      console.error('拍照失败:', error)
+      alert('拍照失败，请重试')
+    } finally {
+      setTimeout(() => {
+        isCapturing.value = false
+      }, 800)
+    }
   }
 
-  const takePhoto = () => {
-    if (!videoRef.value) return
-    const canvas = document.createElement('canvas')
-    const { videoWidth, videoHeight } = videoRef.value
-    canvas.width = videoWidth
-    canvas.height = videoHeight
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+  const takePhoto = async () => {
+    // ========== 核心修复：强制触发布局更新 + 异步等待 ==========
+    if (templateContainerRef.value) {
+      try {
+        // 1. 强制触发浏览器重排（刷新元素尺寸缓存）
+        templateContainerRef.value.style.display = 'none';
+        void templateContainerRef.value.offsetHeight; // 触发重排
+        templateContainerRef.value.style.display = '';
+        void templateContainerRef.value.offsetHeight; // 再次触发重排
 
-    // 1️⃣ 绘制摄像头
-    if (selectedFilter.value?.type === 'css' && selectedFilter.value.cssFilter && selectedFilter.value.cssFilter !== 'none') {
-      ctx.filter = selectedFilter.value.cssFilter
+        // 2. 异步等待一帧（给浏览器足够时间完成布局更新）
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
+        // 3. 重新读取最新的实际尺寸
+        previewWidth.value = templateContainerRef.value.clientWidth;
+        previewHeight.value = templateContainerRef.value.clientHeight;
+
+        // 4. 同步更新AR Canvas尺寸
+        if (canvasRef.value) {
+          canvasRef.value.width = previewWidth.value;
+          canvasRef.value.height = previewHeight.value;
+        }
+
+        console.log('📏 最新检测的界面范围：', {
+          width: previewWidth.value,
+          height: previewHeight.value
+        });
+      } catch (e) {
+        console.error('检测尺寸失败:', e);
+      }
+    }
+    // ========================================================
+
+    if (!videoRef.value || !previewWidth.value || !previewHeight.value) {
+      alert('相机预览区域未就绪，请重试');
+      return;
+    }
+
+    // 等待模板加载完成
+    if (selectedTemplate.value && !templateLoaded.value) {
+      alert('模板图片还在加载中，请稍候');
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    // 使用最新检测的预览区域尺寸
+    canvas.width = previewWidth.value;
+    canvas.height = previewHeight.value;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 重新计算视频流的实时显示比例（关键：用当前视频的实际显示尺寸，而非初始化时的尺寸）
+    const video = videoRef.value;
+    // 新增：获取视频元素在页面上的实际显示尺寸（而非视频流的原始尺寸）
+    const videoDisplayRect = video.getBoundingClientRect();
+    const videoDisplayWidth = videoDisplayRect.width;
+    const videoDisplayHeight = videoDisplayRect.height;
+    const videoRatio = video.videoWidth / video.videoHeight;
+    const previewRatio = previewWidth.value / previewHeight.value;
+
+    let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+    if (videoRatio > previewRatio) {
+      // 视频更宽，裁剪左右两侧
+      drawWidth = previewWidth.value;
+      drawHeight = previewWidth.value / videoRatio;
+      offsetY = (previewHeight.value - drawHeight) / 2;
     } else {
-      ctx.filter = 'none'
+      // 视频更高，裁剪上下两侧（排除底部按钮栏）
+      drawHeight = previewHeight.value;
+      drawWidth = previewHeight.value * videoRatio;
+      offsetX = (previewWidth.value - drawWidth) / 2;
     }
-    ctx.drawImage(videoRef.value, 0, 0, videoWidth, videoHeight)
-    ctx.filter = 'none'
 
-    // 2️⃣ 绘制模板
+    // 1️⃣ 绘制摄像头（带滤镜，只绘制可视区域）
+    if (selectedFilter.value?.type === 'css' && selectedFilter.value.cssFilter && selectedFilter.value.cssFilter !== 'none') {
+      ctx.filter = selectedFilter.value.cssFilter;
+    } else {
+      ctx.filter = 'none';
+    }
+    // 关键修改：使用视频的实际显示尺寸作为绘制源的尺寸
+    ctx.drawImage(
+      video,
+      0, 0, video.videoWidth, video.videoHeight, // 源视频的原始尺寸
+      offsetX, offsetY, drawWidth, drawHeight    // 目标预览区域的尺寸
+    );
+    ctx.filter = 'none';
+
+    // 2️⃣ 绘制静态模板图片（尺寸匹配预览区域）
     if (selectedTemplate.value && templateRef.value) {
-      ctx.drawImage(templateRef.value, 0, 0, videoWidth, videoHeight)
+      try {
+        ctx.drawImage(templateRef.value, 0, 0, previewWidth.value, previewHeight.value);
+      } catch (error) {
+        console.warn('绘制静态模板失败:', error);
+      }
     }
 
-    // 3️⃣ 绘制 AR canvas
+    // 3️⃣ 绘制动态模板DOM
+    if (renderConfig.value && templateContainerRef.value) {
+      try {
+        const templateCanvas = await domToCanvas(
+          templateContainerRef.value,
+          previewWidth.value,
+          previewHeight.value
+        );
+        ctx.drawImage(templateCanvas, 0, 0, previewWidth.value, previewHeight.value);
+      } catch (error) {
+        console.warn('绘制动态模板失败:', error);
+      }
+    }
+
+    // 4️⃣ 绘制 AR canvas
     if (canvasRef.value) {
-      ctx.drawImage(canvasRef.value, 0, 0, videoWidth, videoHeight)
+      ctx.drawImage(canvasRef.value, 0, 0, previewWidth.value, previewHeight.value);
     }
 
-    // 4️⃣ 保存照片
-    const photoData = canvas.toDataURL('image/jpeg', 0.9)
-    handlePhotoTaken(photoData)
+    // 5️⃣ 保存照片
+    const photoData = canvas.toDataURL('image/jpeg', 0.9);
+    await handlePhotoTaken(photoData);
+  };
 
-    // 5️⃣ 清除模板
-    localStorage.removeItem('selectedTemplate')
-    selectedTemplate.value = null
-  }
-
+  // 保存成功逻辑
   const handlePhotoTaken = async (photoData: string) => {
     try {
       await photoDB.savePhoto(photoData)
       console.log('✅ 照片保存成功！')
+      // 显示保存成功弹窗
+      setTimeout(() => {
+        saveSuccessShow.value = true
+        setTimeout(() => {
+          saveSuccessShow.value = false
+        }, 1500)
+      }, 400)
     } catch (err) {
       console.error('保存照片失败:', err)
       alert('保存失败，请重试')
@@ -332,6 +579,8 @@
   // ---------------- 相机初始化 ----------------
   const initCamera = async () => {
     try {
+      isTemplateReady.value = false
+
       if (mediaStream.value) mediaStream.value.getTracks().forEach(track => track.stop())
       const constraints: MediaStreamConstraints = {
         video: {
@@ -348,6 +597,12 @@
         // 等待视频就绪
         videoRef.value.onloadedmetadata = () => {
           console.log('视频已就绪')
+          // 同步AR Canvas尺寸
+          if (canvasRef.value && templateContainerRef.value) {
+            canvasRef.value.width = templateContainerRef.value.clientWidth
+            canvasRef.value.height = templateContainerRef.value.clientHeight
+          }
+          isTemplateReady.value = true
           // 如果当前有AR特效，重新启动
           if (currentAREffect.value !== 'none') {
             setTimeout(() => {
@@ -359,6 +614,7 @@
     } catch (err) {
       console.error('摄像头初始化失败:', err)
       alert('请授予摄像头权限')
+      isTemplateReady.value = true
     }
   }
 
@@ -438,9 +694,9 @@
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // 设置 canvas 尺寸与视频一致
-    canvas.width = videoRef.value.videoWidth
-    canvas.height = videoRef.value.videoHeight
+    // 设置 canvas 尺寸与预览区域一致
+    canvas.width = previewWidth.value
+    canvas.height = previewHeight.value
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
@@ -713,6 +969,11 @@
     console.log('AR 已停止')
   }
 
+  // ---------------- 监听模板变化 ----------------
+  watch([selectedTemplate, renderConfig], () => {
+    templateLoaded.value = false // 重置加载状态
+  })
+
   // ---------------- 生命周期 ----------------
   onMounted(async () => {
     try {
@@ -729,11 +990,37 @@
         }
       }
 
+      // 解析路由传递的模板配置
+      const configStr = route.query.renderConfig as string
+      if (configStr) {
+        try {
+          renderConfig.value = JSON.parse(configStr)
+        } catch (e) {
+          console.error('解析动态模板配置失败:', e)
+        }
+      }
+
       // 加载滤镜
       loadFilter()
 
       // 初始化数据库
       await photoDB.init()
+
+      // 初始化预览区域尺寸
+      nextTick(() => {
+        if (templateContainerRef.value) {
+          previewWidth.value = templateContainerRef.value.clientWidth
+          previewHeight.value = templateContainerRef.value.clientHeight
+          // 同步AR Canvas初始尺寸
+          if (canvasRef.value) {
+            canvasRef.value.width = previewWidth.value
+            canvasRef.value.height = previewHeight.value
+          }
+        }
+      })
+
+      // 监听窗口大小变化
+      window.addEventListener('resize', handleResize)
 
       // 初始化摄像头
       if (navigator.mediaDevices && 'getUserMedia' in navigator.mediaDevices) {
@@ -741,6 +1028,13 @@
       } else {
         console.error('浏览器不支持摄像头')
         alert('您的浏览器不支持摄像头功能')
+      }
+
+      // 引入html2canvas（用于DOM转Canvas）
+      if (!window.html2canvas) {
+        const script = document.createElement('script')
+        script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'
+        document.head.appendChild(script)
       }
     } catch (err) {
       console.error('初始化失败:', err)
@@ -762,140 +1056,22 @@
 
     // 停止AR
     stopAR()
+
+    // 移除窗口大小监听
+    window.removeEventListener('resize', handleResize)
   })
 
   // 声明全局类型
   declare global {
     interface Window {
       FaceMesh: any
+      html2canvas: any
     }
   }
 </script>
 
 <style scoped>
-/* 原有的所有样式保持不变，只添加以下新样式 */
-
-.flash-ar-container {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: visible !important; /* 允许下拉菜单溢出显示 */
-  width: auto;
-  height: 32px; /* 和其他top-btn保持一致 */
-}
-
-/* 修复AR按钮样式：确保显示正常 */
-.ar-menu-btn {
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 15px;
-  padding: 4px 12px;
-  font-size: 14px;
-  background-color: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(4px);
-  transition: all 0.2s ease;
-  height: 28px;
-  min-width: 45px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: relative;
-  overflow: visible;
-  /* 新增：确保按钮不被遮挡 */
-  z-index: 100;
-}
-
-.ar-menu-btn:hover {
-  background-color: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.9);
-}
-
-.ar-menu-text {
-  color: #fff;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-  /* 新增：确保文字显示 */
-  display: block;
-}
-
-
-/* AR下拉菜单 - 修复：提高z-index */
-.ar-dropdown-menu {
-  position: absolute;
-  top: 45px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.95);
-  border-radius: 12px;
-  padding: 8px;
-  min-width: 160px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 9999; /* 修复：提高z-index避免遮挡 */
-  animation: fadeIn 0.2s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-/* 菜单项 */
-.ar-menu-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  border-radius: 8px;
-  color: white;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  font-size: 14px;
-}
-
-.ar-menu-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* 图标 */
-.ar-icon {
-  width: 24px;
-  height: 24px;
-  margin-right: 12px;
-  border-radius: 4px;
-}
-
-.cat-icon {
-  background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
-}
-
-.dog-icon {
-  background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
-}
-
-.sunglasses-icon {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.none-icon {
-  background: linear-gradient(135deg, #666 0%, #999 100%);
-}
-
-/* AR特效指示器图标 */
-.filter-ar-icon {
-  color: #FFD700; /* 金色 */
-  font-size: 14px;
-  margin-right: 6px;
-}
-
-/* 保持原有的所有其他样式不变 */
+/* 原有样式保持不变 */
 .camera-page {
   width: 100vw;
   height: 100vh;
@@ -924,6 +1100,16 @@
   height: 100%;
   object-fit: cover;
   z-index: 1;
+}
+
+/* 模板容器样式 */
+.template-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
 }
 
 .filter-indicator {
@@ -982,6 +1168,13 @@
 
 .filter-close:hover {
   background: rgba(255, 68, 68, 0.2);
+}
+
+/* 新增：模板指示器图标样式 */
+.filter-template-icon {
+  color: #4CAF50; /* 绿色 */
+  font-size: 14px;
+  margin-right: 6px;
 }
 
 .camera-grid {
@@ -1048,6 +1241,118 @@
   font-size: 22px;
   width: 32px;
   height: 32px;
+}
+
+.flash-ar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible !important;
+  width: auto;
+  height: 32px;
+}
+
+.ar-menu-btn {
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 15px;
+  padding: 4px 12px;
+  font-size: 14px;
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+  transition: all 0.2s ease;
+  height: 28px;
+  min-width: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  overflow: visible;
+  z-index: 100;
+}
+
+.ar-menu-btn:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
+.ar-menu-text {
+  color: #fff;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  display: block;
+}
+
+.ar-dropdown-menu {
+  position: absolute;
+  top: 45px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.95);
+  border-radius: 12px;
+  padding: 8px;
+  min-width: 160px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 9999;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.ar-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 14px;
+}
+
+.ar-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.ar-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 12px;
+  border-radius: 4px;
+}
+
+.cat-icon {
+  background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+}
+
+.dog-icon {
+  background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+}
+
+.sunglasses-icon {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.none-icon {
+  background: linear-gradient(135deg, #666 0%, #999 100%);
+}
+
+.filter-ar-icon {
+  color: #FFD700;
+  font-size: 14px;
+  margin-right: 6px;
 }
 
 .template-btn {
@@ -1191,5 +1496,19 @@
   object-fit: cover;
   pointer-events: none;
   z-index: 5;
+}
+
+/* 保存成功弹窗样式 */
+.save-success {
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  padding: 30px 40px;
+  border-radius: 12px;
+  text-align: center;
+  color: #fff;
+}
+.save-success p {
+  margin-top: 15px;
+  font-size: 16px;
 }
 </style>

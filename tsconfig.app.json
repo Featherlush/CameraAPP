@@ -3,6 +3,7 @@
   "include": [
     "env.d.ts",
     "src/vue.d.ts",
+    "src/types/global.d.ts", // 显式引入global.d.ts
     "src/**/*",
     "src/**/*.vue"
   ],
@@ -13,9 +14,19 @@
   ],
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
-    "baseUrl": ".", 
+    "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
-    }
+    },
+    // 关键：添加全局类型支持
+    "types": [
+      "node",
+    ],
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types" // 识别src/types下的自定义类型
+    ],
+    // 允许any类型（避免plus/uni的复杂API报类型错）
+    "noImplicitAny": false
   }
 }

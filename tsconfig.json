@@ -10,5 +10,12 @@
     {
       "path": "./tsconfig.vitest.json"
     }
-  ]
+  ],
+  "compilerOptions": {
+    // 全局类型声明（兜底，确保所有子配置都能继承）
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types"
+    ]
+  }
 }

@@ -89,6 +89,7 @@ onMounted(() => {
 <style scoped>
 .album-page {
   min-height: 100vh;
+  width: 100vw;
   background-color: gainsboro;
 }
 
@@ -104,6 +105,7 @@ onMounted(() => {
   position: relative;
   aspect-ratio: 1/1; /* 正方形布局 */
   overflow: hidden;
+  border-radius: 4px;
 }
 
 .photo-img {
@@ -157,7 +159,6 @@ onMounted(() => {
 /* 预览弹窗样式 */
 .preview-img {
   max-width: 90vw;
-  max-height: 80vh;
-  border-radius: 8px;
+  max-height: 78vh;
 }
 </style>

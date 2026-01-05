@@ -116,7 +116,7 @@ const filters = ref<FilterItem[]>([
   },
   {
     id: 5,
-    name: '冷色调',
+    name: '阿凡达',
     description: '冷色系滤镜',
     thumbnailColor: 'linear-gradient(135deg, #00BFFF 0%, #1E90FF 100%)',
     type: '风景',
@@ -182,13 +182,14 @@ const useFilter = (filter: FilterItem) => {
     })
   )
 
-  router.back()
+  router.push('/')
 }
 </script>
 
 <style scoped>
 .template-page {
   min-height: 100vh;
+  width: 100vw;
   background-color: #f5f5f5;
 }
 

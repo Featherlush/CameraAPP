@@ -2,7 +2,7 @@
   <div class="template-page">
     <!-- 顶部导航 -->
     <van-nav-bar
-      title="AR合拍"
+      title="自定义"
       left-arrow
       @click-left="router.back()"
       background="#fff"
@@ -11,7 +11,7 @@
 
     <!-- 搜索框 -->
     <div class="search-box">
-      <van-search placeholder="搜索模板" v-model="searchKey" />
+      <van-search placeholder="搜索素材" v-model="searchKey" />
     </div>
 
     <!-- 模板列表 -->
@@ -34,7 +34,7 @@
       <!-- 上传素材按钮 -->
       <div class="template-item upload-item" @click="handleUpload">
         <van-icon name="plus" size="40" color="#999" />
-        <div class="upload-text">上传自定义素材</div>
+        <div class="upload-text">上传自定义素材（需要自抠透明部分）</div>
       </div>
     </div>
 
@@ -199,6 +199,7 @@ onMounted(async () => {
 <style scoped>
 .template-page {
   min-height: 100vh;
+  width: 100vw;
   background-color: #f5f5f5;
 }
 
